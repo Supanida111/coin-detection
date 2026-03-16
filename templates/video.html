@@ -1,39 +1,358 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Webcam Object Detection</title>
-    <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #f06, #48f);
-            font-family: Arial, sans-serif;
-            color: #fff;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0c10">
+<title>CoinScan</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Noto+Sans+Thai:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --card: #13171f;
+    --border: #1e2330;
+    --green: #00f588;
+    --amber: #ffb800;
+    --red: #ff2d55;
+    --text: #e8edf8;
+    --muted: #4a5568;
+  }
 
-        h1 {
-            margin-bottom: 20px;
-            font-size: 2.5em;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-        }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 
-        img {
-            border: 5px solid #fff;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-            max-width: 90%;
-            height: auto;
-        }
-    </style>
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans Thai', 'Outfit', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content:''; position:fixed; inset:0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,245,136,0.015) 3px, rgba(0,245,136,0.015) 4px);
+    pointer-events:none; z-index:0;
+  }
+
+  header {
+    position: sticky; top:0; z-index:100;
+    background: rgba(10,12,16,0.92);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .logo {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700; font-size: 20px; letter-spacing: 2px;
+  }
+  .logo span { color: var(--green); }
+  .logo em { color: var(--text); font-style:normal; }
+
+  .live-pill {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,245,136,0.08);
+    border: 1px solid rgba(0,245,136,0.25);
+    border-radius: 20px; padding: 5px 12px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 11px; letter-spacing: 2px; color: var(--green);
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted); transition: all 0.3s;
+  }
+  .live-dot.active {
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: blink 1.5s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  main { position:relative; z-index:1; padding: 16px 16px 100px; }
+
+  .cam-wrap {
+    position: relative;
+    border-radius: 20px; overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--card);
+    aspect-ratio: 4/3;
+    margin-bottom: 16px;
+    transition: border-color 0.4s;
+  }
+  .cam-wrap.active { border-color: rgba(0,245,136,0.3); }
+
+  #videoEl {
+    width: 100%; height: 100%;
+    object-fit: cover; display: block;
+    position: absolute; inset:0;
+  }
+
+  .result-layer {
+    position: absolute; inset:0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  canvas { display:none; }
+
+  .corner {
+    position: absolute; width: 24px; height: 24px;
+    border-color: var(--green); border-style: solid;
+    opacity: 0; transition: opacity 0.4s; z-index:2;
+  }
+  .cam-wrap.active .corner { opacity: 1; }
+  .c-tl { top:12px; left:12px; border-width:2px 0 0 2px; border-radius:4px 0 0 0; }
+  .c-tr { top:12px; right:12px; border-width:2px 2px 0 0; border-radius:0 4px 0 0; }
+  .c-bl { bottom:12px; left:12px; border-width:0 0 2px 2px; border-radius:0 0 0 4px; }
+  .c-br { bottom:12px; right:12px; border-width:0 2px 2px 0; border-radius:0 0 4px 0; }
+
+  .scan-bar {
+    position: absolute; left:0; right:0; height:2px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+    opacity:0; top:0; z-index:2;
+  }
+  .cam-wrap.active .scan-bar { opacity:0.6; animation: scanDown 2.5s linear infinite; }
+  @keyframes scanDown { 0%{top:0} 100%{top:100%} }
+
+  .cam-placeholder {
+    position: absolute; inset:0; z-index:3;
+    display: flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:12px;
+    transition: opacity 0.4s;
+  }
+  .cam-placeholder.hidden { opacity:0; pointer-events:none; }
+  .cam-icon { font-size: 52px; opacity: 0.2; }
+  .cam-hint {
+    font-family: 'Outfit', monospace;
+    font-size: 12px; letter-spacing: 2px;
+    color: var(--muted); text-transform: uppercase;
+  }
+
+  .fps-badge {
+    position: absolute; top:12px; right:12px; z-index:3;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 4px 10px; font-family: 'Outfit', monospace;
+    font-size: 10px; color: var(--green); letter-spacing: 1px;
+    opacity:0; transition: opacity 0.3s;
+  }
+  .cam-wrap.active .fps-badge { opacity:1; }
+
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 8px; margin-bottom: 16px;
+  }
+
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 8px;
+    text-align: center; position: relative; overflow: hidden;
+  }
+  .stat-card::after {
+    content:''; position:absolute;
+    bottom:0; left:0; right:0; height:2px;
+  }
+  .stat-card.c1::after { background: var(--amber); }
+  .stat-card.c2::after { background: #c0c8d8; }
+  .stat-card.c5::after { background: #e6a817; }
+  .stat-card.c10::after { background: var(--green); }
+
+  .stat-card.bump { animation: bump 0.3s ease; }
+  @keyframes bump { 0%{transform:scale(1)} 50%{transform:scale(1.08)} 100%{transform:scale(1)} }
+
+  .stat-num {
+    font-family: 'Outfit', sans-serif;
+    font-size: 28px; font-weight: 700; line-height: 1;
+  }
+  .stat-card.c1 .stat-num { color: var(--amber); }
+  .stat-card.c2 .stat-num { color: #c0c8d8; }
+  .stat-card.c5 .stat-num { color: #e6a817; }
+  .stat-card.c10 .stat-num { color: var(--green); }
+  .stat-label { font-size: 10px; color: var(--muted); margin-top: 4px; letter-spacing: 1px; }
+
+  .total-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 18px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; position: relative; overflow: hidden;
+  }
+  .total-card::before {
+    content:''; position:absolute; inset:0;
+    background: linear-gradient(135deg, rgba(255,184,0,0.05), transparent);
+  }
+  .total-label { font-size: 13px; color: var(--muted); letter-spacing:1px; text-transform:uppercase; }
+  .total-num {
+    font-family: 'Outfit', sans-serif;
+    font-size: 36px; font-weight: 700; color: var(--amber);
+    text-shadow: 0 0 20px rgba(255,184,0,0.3);
+  }
+  .total-unit { font-size: 16px; color: var(--muted); }
+
+  .btn-wrap { display: flex; gap: 10px; }
+  .btn {
+    flex: 1; padding: 14px; border-radius: 14px; border: 1px solid;
+    font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 600;
+    letter-spacing: 2px; cursor: pointer; transition: all 0.2s; text-transform: uppercase;
+  }
+  .btn-start { background: var(--green); border-color: var(--green); color: #000; }
+  .btn-start:hover { box-shadow: 0 0 24px rgba(0,245,136,0.4); transform: translateY(-1px); }
+  .btn-start:disabled { opacity:0.3; cursor:not-allowed; transform:none !important; box-shadow:none !important; }
+  .btn-reset { background: transparent; border-color: var(--border); color: var(--muted); }
+  .btn-reset:hover { border-color: var(--red); color: var(--red); }
+</style>
 </head>
 <body>
-    <h1>Face Detection Application</h1>
-    <img id="video" src="/video_feed" alt="Video Feed">
+
+<header>
+  <div class="logo"><span>COIN</span><em>SCAN</em></div>
+  <div class="live-pill">
+    <div class="live-dot" id="liveDot"></div>
+    <span id="liveText">READY</span>
+  </div>
+</header>
+
+<main>
+  <div class="cam-wrap" id="camWrap">
+    <div class="corner c-tl"></div><div class="corner c-tr"></div>
+    <div class="corner c-bl"></div><div class="corner c-br"></div>
+    <div class="scan-bar"></div>
+
+    <div class="cam-placeholder" id="placeholder">
+      <div class="cam-icon">🪙</div>
+      <div class="cam-hint">กด START เพื่อเริ่ม</div>
+    </div>
+
+    <video id="videoEl" autoplay playsinline muted></video>
+    <img id="imgA" class="result-layer" src="" alt="">
+    <img id="imgB" class="result-layer" src="" alt="">
+    <canvas id="canvas"></canvas>
+    <div class="fps-badge" id="fpsBadge">-- FPS</div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card c1"><div class="stat-num" id="c1">0</div><div class="stat-label">1 บาท</div></div>
+    <div class="stat-card c2"><div class="stat-num" id="c2">0</div><div class="stat-label">2 บาท</div></div>
+    <div class="stat-card c5"><div class="stat-num" id="c5">0</div><div class="stat-label">5 บาท</div></div>
+    <div class="stat-card c10"><div class="stat-num" id="c10">0</div><div class="stat-label">10 บาท</div></div>
+  </div>
+
+  <div class="total-card">
+    <div>
+      <div class="total-label">ยอดรวม</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px;">Total amount</div>
+    </div>
+    <div style="text-align:right">
+      <div class="total-num" id="total">0</div>
+      <div class="total-unit">บาท</div>
+    </div>
+  </div>
+
+  <div class="btn-wrap">
+    <button class="btn btn-start" id="btnStart" onclick="startCam()">▶ START</button>
+    <button class="btn btn-reset" onclick="resetCount()">↺ RESET</button>
+  </div>
+</main>
+
+<script>
+const video = document.getElementById('videoEl');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const imgA = document.getElementById('imgA');
+const imgB = document.getElementById('imgB');
+const camWrap = document.getElementById('camWrap');
+
+let currentLayer = 'A';
+let frameCount = 0, fpsTimer = Date.now();
+let detecting = false;
+
+function startCam() {
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width:{ideal:640}, height:{ideal:480} }
+  })
+  .then(stream => {
+    video.srcObject = stream;
+    camWrap.classList.add('active');
+    document.getElementById('placeholder').classList.add('hidden');
+    document.getElementById('liveDot').classList.add('active');
+    document.getElementById('liveText').textContent = 'LIVE';
+    document.getElementById('btnStart').disabled = true;
+    // ส่งรูปทุก 500ms = เร็วขึ้น 2 เท่า
+    setInterval(sendFrame, 500);
+  })
+  .catch(err => alert('ไม่สามารถเปิดกล้องได้: ' + err));
+}
+
+function sendFrame() {
+  if (!video.videoWidth || detecting) return;
+  detecting = true;
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0);
+
+  canvas.toBlob(blob => {
+    const fd = new FormData();
+    fd.append('image', blob, 'frame.jpg');
+
+    fetch('/mobile-detect/', { method:'POST', body:fd })
+    .then(r => r.json())
+    .then(data => {
+      updateStats(data);
+      updateFPS();
+      detecting = false;
+    })
+    .catch(() => { detecting = false; });
+  }, 'image/jpeg', 0.7);
+}
+
+function updateStats(data) {
+  const keys = ['1','2','5','10'];
+  const ids  = ['c1','c2','c5','c10'];
+  ids.forEach((id, i) => {
+    const el = document.getElementById(id);
+    const newVal = (data.count && data.count[keys[i]]) || 0;
+    if (parseInt(el.textContent) !== newVal) {
+      el.textContent = newVal;
+      const card = el.closest('.stat-card');
+      card.classList.remove('bump');
+      void card.offsetWidth;
+      card.classList.add('bump');
+    }
+  });
+  document.getElementById('total').textContent = data.total || 0;
+
+  if (data.image) {
+    const nextSrc = 'data:image/jpeg;base64,' + data.image;
+    if (currentLayer === 'A') {
+      imgB.src = nextSrc;
+      imgB.onload = () => { imgB.style.opacity='1'; imgA.style.opacity='0'; currentLayer='B'; };
+    } else {
+      imgA.src = nextSrc;
+      imgA.onload = () => { imgA.style.opacity='1'; imgB.style.opacity='0'; currentLayer='A'; };
+    }
+  }
+}
+
+function updateFPS() {
+  frameCount++;
+  const now = Date.now();
+  if (now - fpsTimer >= 1000) {
+    document.getElementById('fpsBadge').textContent =
+      Math.round(frameCount * 1000 / (now - fpsTimer)) + ' FPS';
+    frameCount = 0; fpsTimer = now;
+  }
+}
+
+function resetCount() {
+  ['c1','c2','c5','c10'].forEach(id => document.getElementById(id).textContent = '0');
+  document.getElementById('total').textContent = '0';
+  imgA.style.opacity='0'; imgA.src='';
+  imgB.style.opacity='0'; imgB.src='';
+}
+</script>
 </body>
 </html>
